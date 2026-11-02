@@ -5,6 +5,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.getenv("ASEP_DATA_DIR", BASE_DIR / "data"))
 DB_PATH = Path(os.getenv("ASEP_DB_PATH", DATA_DIR / "asep.db"))
+DATABASE_PATH = DB_PATH
 
 # Timezone & Localization
 TIMEZONE = os.getenv("ASEP_TIMEZONE", "Asia/Jakarta")
