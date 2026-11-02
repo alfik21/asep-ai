@@ -13,7 +13,11 @@ from typing import Any, List, Optional
 from zoneinfo import ZoneInfo
 
 from config.settings import TIMEZONE
-from src.domain.finance import add_transaction, get_financial_summary
+from src.domain.finance import (
+    _parse_amount_idr,
+    add_transaction,
+    get_financial_summary,
+)
 from src.domain.notes import list_notes, save_note, search_notes
 from src.domain.reminders import create_reminder, get_due_reminders
 from src.domain.reports import (
@@ -24,6 +28,26 @@ from src.domain.reports import (
 )
 from src.domain.tasks import create_task, list_tasks, mark_task_status
 from src.system.health import format_system_health, get_system_health
+
+
+def _format_to_wib(dt_str: Optional[str]) -> Optional[str]:
+    """Formats an ISO-8601 UTC string into local Asia/Jakarta (WIB) time.
+
+    Returns string formatted as 'YYYY-MM-DD HH:MM WIB'.
+    """
+    if not dt_str:
+        return None
+    try:
+        clean = dt_str.strip()
+        dt = datetime.fromisoformat(clean)
+        local_tz = ZoneInfo(TIMEZONE)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=local_tz)
+        else:
+            dt = dt.astimezone(local_tz)
+        return dt.strftime("%Y-%m-%d %H:%M WIB")
+    except Exception:
+        return dt_str
 
 
 class DispatchArgumentParser(argparse.ArgumentParser):
@@ -79,7 +103,8 @@ def _handle_tasks(args: argparse.Namespace, db_path: Optional[str]) -> str:
                 priority=priority,
                 db_path=db_path,
             )
-            due_str = f"\n• Tenggat: {due_at}" if due_at else ""
+            wib_due = _format_to_wib(due_at)
+            due_str = f"\n• Tenggat: {wib_due}" if wib_due else ""
             return (
                 f"✅ *Tugas berhasil dibuat!*\n"
                 f"• ID: #{task_id}\n"
@@ -102,7 +127,8 @@ def _handle_tasks(args: argparse.Namespace, db_path: Optional[str]) -> str:
             prio_val = t.get("priority", "normal")
             prio_badge = f" [{prio_val.capitalize()}]" if prio_val != "normal" else ""
             due_at = t.get("due_at")
-            due_badge = f" (Tenggat: {due_at[:16].replace('T', ' ')})" if due_at else ""
+            wib_due = _format_to_wib(due_at)
+            due_badge = f" (Tenggat: {wib_due})" if wib_due else ""
             lines.append(f"{status_icon} *#{t['id']}* {t['title']}{prio_badge}{due_badge}")
         return "\n".join(lines)
     except Exception as e:
@@ -128,7 +154,9 @@ def _handle_today(args: argparse.Namespace, db_path: Optional[str]) -> str:
                     if t.get("priority") and t.get("priority") != "normal"
                     else ""
                 )
-                lines.append(f"{status_icon} *#{t['id']}* {t['title']}{prio_badge}")
+                wib_due = _format_to_wib(t.get("due_at"))
+                due_badge = f" (Tenggat: {wib_due})" if wib_due else ""
+                lines.append(f"{status_icon} *#{t['id']}* {t['title']}{prio_badge}{due_badge}")
         else:
             lines.append("- Tidak ada tugas untuk hari ini.")
 
@@ -136,8 +164,10 @@ def _handle_today(args: argparse.Namespace, db_path: Optional[str]) -> str:
         lines.append("⏰ *Pengingat Tertunda / Jatuh Tempo:*")
         if reminders:
             for r in reminders:
+                wib_time = _format_to_wib(r.get("remind_at"))
+                time_badge = f" (Waktu: {wib_time})" if wib_time else ""
                 lines.append(
-                    f"• *#{r['id']}* {r['entity_type']} #{r['entity_id']} (Waktu: {r['remind_at'][:16].replace('T', ' ')})"
+                    f"• *#{r['id']}* {r['entity_type']} #{r['entity_id']}{time_badge}"
                 )
         else:
             lines.append("- Tidak ada pengingat tertunda.")
@@ -178,9 +208,14 @@ def _handle_finance(args: argparse.Namespace, db_path: Optional[str]) -> str:
             return "❌ Jumlah transaksi wajib ditentukan (--amount <nilai>)."
 
         try:
+            parsed_amount = _parse_amount_idr(args.amount)
+        except Exception as e:
+            return f"❌ Jumlah transaksi tidak valid: {e}"
+
+        try:
             tx_id = add_transaction(
                 type=args.type,
-                amount_idr=args.amount,
+                amount_idr=parsed_amount,
                 description=args.desc,
                 category=args.category,
                 payment_method=args.payment,
@@ -190,7 +225,7 @@ def _handle_finance(args: argparse.Namespace, db_path: Optional[str]) -> str:
                 f"✅ *Transaksi berhasil dicatat!*\n"
                 f"• ID: #{tx_id}\n"
                 f"• Tipe: {args.type.capitalize()}\n"
-                f"• Jumlah: {format_idr(int(args.amount))}\n"
+                f"• Jumlah: {format_idr(parsed_amount)}\n"
                 f"• Deskripsi: {args.desc or '-'}\n"
                 f"• Kategori: {args.category or '-'}"
             )
@@ -306,11 +341,12 @@ def _handle_reminders(args: argparse.Namespace, db_path: Optional[str]) -> str:
                 remind_at=remind_at,
                 db_path=db_path,
             )
+            wib_remind = _format_to_wib(remind_at) or remind_at
             return (
                 f"⏰ *Pengingat berhasil dibuat!*\n"
                 f"• ID: #{rem_id}\n"
                 f"• Target: {entity_type} #{entity_id}\n"
-                f"• Waktu: {remind_at}"
+                f"• Waktu: {wib_remind}"
             )
         except Exception as e:
             return f"❌ Gagal membuat pengingat: {e}"
@@ -323,9 +359,10 @@ def _handle_reminders(args: argparse.Namespace, db_path: Optional[str]) -> str:
 
         lines = [f"⏰ *Daftar Pengingat Jatuh Tempo ({len(reminders)}):*"]
         for r in reminders:
+            wib_remind = _format_to_wib(r.get("remind_at"))
+            time_badge = f" (Waktu: {wib_remind})" if wib_remind else ""
             lines.append(
-                f"• *#{r['id']}* [{r['status']}] {r['entity_type']} #{r['entity_id']} "
-                f"(Waktu: {r['remind_at'][:16].replace('T', ' ')})"
+                f"• *#{r['id']}* [{r['status']}] {r['entity_type']} #{r['entity_id']}{time_badge}"
             )
         return "\n".join(lines)
     except Exception as e:

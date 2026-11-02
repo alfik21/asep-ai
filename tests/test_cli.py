@@ -24,18 +24,21 @@ class TestCLIDispatcher(unittest.TestCase):
         res = dispatch_command("/tasks", db_path=self.db_path)
         self.assertIn("Tidak ada tugas", res)
 
-        # 2. Create task
+        # 2. Create task with UTC due time
         res_create = dispatch_command(
-            '/tasks --create "Beli Susu Kental Manis" --priority high --due 2026-11-05',
+            '/tasks --create "Beli Susu Kental Manis" --priority high --due 2026-11-05T03:00:00+00:00',
             db_path=self.db_path,
         )
         self.assertIn("Tugas berhasil dibuat", res_create)
         self.assertIn("Beli Susu Kental Manis", res_create)
+        # 03:00 UTC should be formatted as 10:00 WIB (Asia/Jakarta +07:00)
+        self.assertIn("2026-11-05 10:00 WIB", res_create)
 
         # 3. List open tasks
         res_list = dispatch_command("/tasks --status open", db_path=self.db_path)
         self.assertIn("Beli Susu Kental Manis", res_list)
         self.assertIn("[High]", res_list)
+        self.assertIn("2026-11-05 10:00 WIB", res_list)
 
         # 4. Mark task as done
         # Extract task id from res_create or list
@@ -71,13 +74,21 @@ class TestCLIDispatcher(unittest.TestCase):
         self.assertIn("Transaksi berhasil dicatat", res_inc)
         self.assertIn("Rp 5.000.000", res_inc)
 
-        # Add expense
+        # Add expense with formatted string
         res_exp = dispatch_command(
-            '/finance --add --type expense --amount 50000 --desc "Makan Siang" --category Konsumsi',
+            '/finance --add --type expense --amount "50.000" --desc "Makan Siang" --category Konsumsi',
             db_path=self.db_path,
         )
         self.assertIn("Transaksi berhasil dicatat", res_exp)
         self.assertIn("Rp 50.000", res_exp)
+
+        # Add expense with Rp prefix formatted string
+        res_exp_rp = dispatch_command(
+            '/finance --add --type expense --amount "Rp 75.000" --desc "Bensin" --category Transport',
+            db_path=self.db_path,
+        )
+        self.assertIn("Transaksi berhasil dicatat", res_exp_rp)
+        self.assertIn("Rp 75.000", res_exp_rp)
 
         # Financial rekap shortcut
         res_rekap = dispatch_command("/rekap", db_path=self.db_path)
@@ -118,16 +129,18 @@ class TestCLIDispatcher(unittest.TestCase):
         self.assertIn("Arsitektur", res_alias)
 
     def test_dispatch_reminders_flow(self):
-        # Create reminder
+        # Create reminder with UTC timestamp (02:00 UTC = 09:00 WIB)
         res_create = dispatch_command(
-            '/reminders --create --entity-type task --entity-id 1 --remind-at 2026-11-02T10:00:00',
+            '/reminders --create --entity-type task --entity-id 1 --remind-at 2026-11-02T02:00:00+00:00',
             db_path=self.db_path,
         )
         self.assertIn("Pengingat berhasil dibuat", res_create)
+        self.assertIn("2026-11-02 09:00 WIB", res_create)
 
-        # Check due reminders
+        # Check due reminders - should display localized WIB time
         res_check = dispatch_command('/reminders --check-due', db_path=self.db_path)
         self.assertIn("Pengingat", res_check)
+        self.assertIn("2026-11-02 09:00 WIB", res_check)
 
     def test_dispatch_briefing_and_review(self):
         # Morning briefing
