@@ -302,8 +302,11 @@ def _get_database_metrics(target_path: str) -> Dict[str, Any]:
             active_features = int(cursor.fetchone()[0])
 
         # File size calculation
-        if target_path != ":memory:" and os.path.exists(target_path):
-            size_bytes = os.path.getsize(target_path)
+        if target_path and target_path != ":memory:":
+            if os.path.exists(target_path):
+                size_bytes = os.path.getsize(target_path)
+            else:
+                size_bytes = 0
         else:
             cursor.execute("PRAGMA page_count;")
             page_count = int(cursor.fetchone()[0])

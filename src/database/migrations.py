@@ -71,19 +71,17 @@ def run_migrations(db_path: Optional[str] = None) -> int:
             now_utc = datetime.now(timezone.utc).isoformat()
 
             try:
-                conn.executescript(f"BEGIN TRANSACTION;\n{content}\n")
-                conn.execute(
-                    """
-                    INSERT INTO schema_migrations (version, applied_at, checksum)
-                    VALUES (?, ?, ?);
-                    """,
-                    (version, now_utc, checksum),
-                )
-                conn.execute("COMMIT;")
+                conn.executescript(content)
+                with conn:
+                    conn.execute(
+                        """
+                        INSERT INTO schema_migrations (version, applied_at, checksum)
+                        VALUES (?, ?, ?);
+                        """,
+                        (version, now_utc, checksum),
+                    )
                 applied_count += 1
             except Exception as e:
-                if conn.in_transaction:
-                    conn.execute("ROLLBACK;")
                 logger.error("Failed to apply migration %s: %s", version, e)
                 raise
 
