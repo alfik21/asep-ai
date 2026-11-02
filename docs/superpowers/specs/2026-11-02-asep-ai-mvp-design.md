@@ -41,8 +41,16 @@ Running on a constrained 1 GB RAM / 20 GB VPS necessitates a lean, resilient arc
 
 ---
 
-## 3. Constraints
-- **Resource Limits**: VPS Ubuntu with 1 GB RAM and 20 GB Storage. Python processes must be lightweight and memory-monitored.
+## 3. Constraints & Optimization Strategies
+- **Resource Limits (Modest VPS 1 GB RAM / 20 GB Disk)**:
+  - Zero persistent background daemons where possible. Use **Native Hermes Skills + direct CLI tool execution** over heavy MCP servers to prevent RAM exhaustion.
+  - Strict concurrency: maximum 1 active AI request at a time.
+  - SQLite configured with `WAL` mode and busy timeout to ensure non-blocking, lightning-fast local operations.
+- **AI Timeout & Token Resilience**:
+  - **Zero-Token Path**: All routine queries (`/tasks`, `/today`, `/rekap`, reminder trigger executions) run completely deterministically via local Python/SQL without invoking the AI model.
+  - **Strict Request Timeout**: Hard timeout of 15–20 seconds on 9Router API calls; no indefinite hanging.
+  - **Fail-Fast & Deterministic Fallbacks**: If the 9Router API returns 502/503/timeout, immediately return a clean, friendly fallback message to WhatsApp instead of repeatedly blocking or crashing the service.
+  - **Lean Prompts**: Strip verbose chat history. Send only the minimal system instructions and immediate user message to avoid context bloat and slow inference latency.
 - **Database**: SQLite with Write-Ahead Logging (`WAL`), strict serialization of write transactions, foreign key constraints, and automated schema migrations.
 - **Timezone**: All user-facing schedules, relative dates ("besok", "jam 9"), and briefings adhere strictly to `Asia/Jakarta` (WIB, UTC+7), while stored timestamps remain in UTC (ISO-8601).
 - **Communication Security**: Strict allowlist filtering for the owner's WhatsApp number. Rejection and zero data leakage for unauthorized numbers.
