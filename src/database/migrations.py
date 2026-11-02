@@ -88,3 +88,8 @@ def run_migrations(db_path: Optional[str] = None) -> int:
         return applied_count
     finally:
         conn.close()
+
+
+if __name__ == "__main__":
+    count = run_migrations()
+    print(f"Migrasi sukses, {count} file migrasi baru diterapkan.")
